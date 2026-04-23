@@ -3220,18 +3220,7 @@ fn createBuildZon(
         \\        "build.zig",
         \\        "build.zig.zon",
         \\    },
-        \\    .dependencies = .{
-        \\        // Upstream Autodoc currently has a behavior where alias declarations
-        \\        // are presented using the name of the underlying decl:
-        \\        // https://github.com/ziglang/zig/issues/20905
-        \\        // This is unusable for this library, because it means all our aliased
-        \\        // functions would be given their original C names in the documentation.
-        \\        .zig_autodoc = .{
-        \\            .url = "git+https://github.com/ianprime0509/zig?ref=zig-gobject#f2696e399062de9f9ffba0ee1eac5411bcca90e8",
-        \\            .hash = "zig-0.0.0-Fp4XJIbnIg33b41dbDFzgPZfQEbWITdlrryg8kEqYh5x",
-        \\            .lazy = true,
-        \\        },
-        \\    },
+        \\    .dependencies = .{},
         \\}
         \\
     ;
