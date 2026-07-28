@@ -3167,11 +3167,11 @@ fn createBuildZigSource(
     //     \\docs_step.dependOn(&install_docs.step);
     //     \\
     // , .{});
-    for (repositories) |repo| {
-        const module_name = try moduleNameAlloc(allocator, repo.namespace.name, repo.namespace.version);
-        defer allocator.free(module_name);
-        try out.print("docs_mod.addImport($S, $I);\n", .{ module_name, module_name });
-    }
+    // for (repositories) |repo| {
+    //     const module_name = try moduleNameAlloc(allocator, repo.namespace.name, repo.namespace.version);
+    //     defer allocator.free(module_name);
+    //     try out.print("docs_mod.addImport($S, $I);\n", .{ module_name, module_name });
+    // }
 
     try out.print("}\n\n", .{});
 
