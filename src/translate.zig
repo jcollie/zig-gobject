@@ -3044,7 +3044,7 @@ fn createBuildZigSource(
         \\const target = b.standardTargetOptions(.{});
         \\const optimize = b.standardOptimizeOption(.{});
         \\
-        \\const docs_step = b.step("docs", "Generate documentation");
+        \\\\ const docs_step = b.step("docs", "Generate documentation");
         \\const test_step = b.step("test", "Run tests");
         \\
         \\const compat = b.createModule(.{
