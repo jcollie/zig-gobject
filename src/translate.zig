@@ -3044,7 +3044,6 @@ fn createBuildZigSource(
         \\const target = b.standardTargetOptions(.{});
         \\const optimize = b.standardOptimizeOption(.{});
         \\
-        \\\\ const docs_step = b.step("docs", "Generate documentation");
         \\const test_step = b.step("test", "Run tests");
         \\
         \\const compat = b.createModule(.{
@@ -3142,36 +3141,6 @@ fn createBuildZigSource(
         // The self-dependency is useful for extensions files to be able to import their own module by name
         try out.print("$I.addImport($S, $I);\n", .{ module_name, module_name, module_name });
     }
-
-    // Docs
-    // try out.print(
-    //     \\const docs_mod = b.createModule(.{
-    //     \\    .root_source_file = b.path("src/root/root.zig"),
-    //     \\    .target = target,
-    //     \\    .optimize = .Debug,
-    //     \\});
-    //     \\const docs_obj = b.addObject(.{
-    //     \\    .name = "docs",
-    //     \\    .root_module = docs_mod,
-    //     \\    // Defaults to false to avoid bringing in the lazy dependency if not building docs.
-    //     \\    .zig_lib_dir = if (b.option(bool, "autodoc-fork", "Use Autodoc fork for documentation") orelse false) zig_lib_dir: {
-    //     \\        const zig_autodoc_dep = b.lazyDependency("zig_autodoc", .{}) orelse break :zig_lib_dir null;
-    //     \\        break :zig_lib_dir zig_autodoc_dep.path("lib");
-    //     \\    } else null,
-    //     \\});
-    //     \\const install_docs = b.addInstallDirectory(.{
-    //     \\    .source_dir = docs_obj.getEmittedDocs(),
-    //     \\    .install_dir = .prefix,
-    //     \\    .install_subdir = "docs",
-    //     \\});
-    //     \\docs_step.dependOn(&install_docs.step);
-    //     \\
-    // , .{});
-    // for (repositories) |repo| {
-    //     const module_name = try moduleNameAlloc(allocator, repo.namespace.name, repo.namespace.version);
-    //     defer allocator.free(module_name);
-    //     try out.print("docs_mod.addImport($S, $I);\n", .{ module_name, module_name });
-    // }
 
     try out.print("}\n\n", .{});
 
