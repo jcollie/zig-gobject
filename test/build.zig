@@ -535,18 +535,29 @@ pub fn build(b: *std.Build) void {
         const options: ModuleOptions = module_options.get(test_module) orelse .{};
 
         if (options.test_abi) {
+            const translate_c = b.addTranslateC(.{
+                .root_source_file = b.path(b.pathJoin(&.{ "abi", b.fmt("{s}.abi.h", .{module}) })),
+                .target = target,
+                .optimize = optimize,
+            });
             const abi_mod = b.createModule(.{
                 .root_source_file = b.path(b.pathJoin(&.{ "abi", b.fmt("{s}.abi.zig", .{module}) })),
                 .target = target,
                 .optimize = optimize,
                 .imports = &.{
                     .{ .name = module, .module = gobject.module(module) },
+                    .{ .name = "c", .module = translate_c.createModule() },
                 },
             });
             const abi_test = b.addTest(.{ .root_module = abi_mod });
             inline for (comptime std.meta.declarations(gobject_build.libraries)) |lib_decl| {
-                if (std.mem.eql(u8, lib_decl.name, module)) {
-                    @field(gobject_build.libraries, lib_decl.name).linkTo(abi_test.root_module);
+                if (std.mem.eql(u8, lib_decl, module)) {
+                    const library = @field(gobject_build.libraries, lib_decl);
+                    library.linkTo(abi_test.root_module);
+                    // The C headers need the same include paths.
+                    for (library.system_libraries) |system_lib| {
+                        translate_c.linkSystemLibrary(system_lib, .{ .use_pkg_config = .yes });
+                    }
                 }
             }
             test_step.dependOn(&b.addRunArtifact(abi_test).step);

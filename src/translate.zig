@@ -1041,7 +1041,7 @@ fn translateFieldType(allocator: Allocator, @"type": gir.FieldType, ctx: Transla
 }
 
 fn translateBitField(allocator: Allocator, bit_field: gir.BitField, ctx: TranslationContext, out: *ZigWriter) !void {
-    var members = [1]?gir.Member{null} ** 64;
+    var members: [64]?gir.Member = @splat(null);
     var needs_u64 = false;
     for (bit_field.members) |member| {
         if (member.value > 0) {
@@ -3093,7 +3093,7 @@ fn createBuildZigSource(
                 \\libraries.glib2.linkTo(glib2_test_mod);
                 \\libraries.gobject2.linkTo(glib2_test_mod);
                 \\// Some deprecated thread functions require linking gthread-2.0
-                \\glib2_test_mod.linkSystemLibrary("gthread-2.0", .{ .use_pkg_config = .force });
+                \\glib2_test_mod.linkSystemLibrary("gthread-2.0", .{ .use_pkg_config = .yes });
                 \\glib2_test_mod.addImport("compat", compat);
                 \\glib2_test_mod.addImport("glib2", glib2_test_mod);
                 \\
@@ -3259,6 +3259,20 @@ pub fn createAbiTests(
         const import_name = try moduleNameAlloc(allocator, repo.namespace.name, repo.namespace.version);
         defer allocator.free(import_name);
 
+        {
+            const header = try createAbiTestHeader(allocator, repo);
+            defer allocator.free(header);
+            const file_name = try std.fmt.allocPrint(allocator, "{s}.abi.h", .{import_name});
+            defer allocator.free(file_name);
+            const file_path = try std.fs.path.join(allocator, &.{ output_dir_path, file_name });
+            defer allocator.free(file_path);
+            std.Io.Dir.cwd().writeFile(io, .{ .sub_path = file_path, .data = header }) catch |err| {
+                try diag.add("failed to write output header file {s}: {}", .{ file_path, err });
+                try diag.add("failed to create ABI tests for {s}-{s}", .{ repo.namespace.name, repo.namespace.version });
+                continue;
+            };
+        }
+
         const source = try createAbiTestSource(allocator, repo, import_name);
         defer allocator.free(source);
         const file_name = try std.fmt.allocPrint(allocator, "{s}.abi.zig", .{import_name});
@@ -3273,6 +3287,17 @@ pub fn createAbiTests(
     }
 }
 
+/// Returns the C header for an ABI test, including the C headers of `repo`.
+/// The test build translates it to the module the test imports as `c`.
+fn createAbiTestHeader(allocator: Allocator, repo: gir.Repository) Allocator.Error![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    for (repo.c_includes) |c_include| {
+        out.writer.print("#include <{s}>\n", .{c_include.name}) catch return error.OutOfMemory;
+    }
+    return try out.toOwnedSlice();
+}
+
 fn createAbiTestSource(
     allocator: Allocator,
     repo: gir.Repository,
@@ -3285,11 +3310,7 @@ fn createAbiTestSource(
     const pkg = try std.ascii.allocLowerString(allocator, ns.name);
     defer allocator.free(pkg);
 
-    try out.print("const c = @cImport({\n", .{});
-    for (repo.c_includes) |c_include| {
-        try out.print("@cInclude($S);\n", .{c_include.name});
-    }
-    try out.print("});\n", .{});
+    try out.print("const c = @import(\"c\");\n", .{});
     try out.print("const std = @import(\"std\");\n", .{});
     try out.print("const compat = @import(\"compat.zig\");\n", .{});
     try out.print("const $I = @import($S);\n\n", .{ pkg, import_name });
@@ -3390,20 +3411,20 @@ fn createAbiTestSource(
         \\        },
         \\        .@"fn" => |expected_fn| switch (actual_type_info) {
         \\            .@"fn" => |actual_fn| {
-        \\                try std.testing.expectEqual(expected_fn.params.len, actual_fn.params.len);
-        \\                try std.testing.expectEqual(expected_fn.calling_convention, actual_fn.calling_convention);
+        \\                try std.testing.expectEqual(expected_fn.param_types.len, actual_fn.param_types.len);
+        \\                try std.testing.expectEqual(expected_fn.attrs.@"callconv", actual_fn.attrs.@"callconv");
         \\                // The special casing of zero arguments here is because there are some
         \\                // headers (specifically in IBus) which do not properly use the (void)
         \\                // parameter list, so the function is translated as varargs even though
         \\                // it wasn't intended to be.
-        \\                try std.testing.expect(expected_fn.is_var_args == actual_fn.is_var_args or (expected_fn.is_var_args and expected_fn.params.len == 0));
+        \\                try std.testing.expect(expected_fn.attrs.varargs == actual_fn.attrs.varargs or (expected_fn.attrs.varargs and expected_fn.param_types.len == 0));
         \\                try std.testing.expect(expected_fn.return_type != null);
         \\                try std.testing.expect(actual_fn.return_type != null);
         \\                try checkCompatibility(expected_fn.return_type.?, actual_fn.return_type.?);
-        \\                inline for (expected_fn.params, actual_fn.params) |expected_param, actual_param| {
-        \\                    try std.testing.expect(expected_param.type != null);
-        \\                    try std.testing.expect(actual_param.type != null);
-        \\                    try checkCompatibility(expected_param.type.?, actual_param.type.?);
+        \\                inline for (expected_fn.param_types, actual_fn.param_types) |expected_param_type, actual_param_type| {
+        \\                    try std.testing.expect(expected_param_type != null);
+        \\                    try std.testing.expect(actual_param_type != null);
+        \\                    try checkCompatibility(expected_param_type.?, actual_param_type.?);
         \\                }
         \\            },
         \\            else => {

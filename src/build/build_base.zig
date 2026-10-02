@@ -17,7 +17,7 @@ pub const Library = struct {
     pub fn linkTo(lib: Library, module: *std.Build.Module) void {
         module.link_libc = true;
         for (lib.system_libraries) |system_lib| {
-            module.linkSystemLibrary(system_lib, .{ .use_pkg_config = .force });
+            module.linkSystemLibrary(system_lib, .{ .use_pkg_config = .yes });
         }
     }
 };
@@ -79,7 +79,7 @@ pub const CompileResources = struct {
                 .root_module = cr.b.createModule(.{
                     .root_source_file = cr.b.path("build/build_gresources_xml.zig"),
                     .target = cr.b.graph.host,
-                    .optimize = .Debug,
+                    .optimize = .debug,
                 }),
             });
             build_gresources_xml_exe = exe;

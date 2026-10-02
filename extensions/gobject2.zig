@@ -184,7 +184,7 @@ pub fn defineClass(
     if (parent_info != .@"struct" or parent_info.@"struct".layout != .@"extern" or !@hasDecl(Instance.Parent, "getGObjectType")) {
         @compileError("the defined parent type " ++ @typeName(Instance.Parent) ++ " does not appear to be a GObject class type");
     }
-    if (instance_info.@"struct".fields.len == 0 or instance_info.@"struct".fields[0].type != Instance.Parent) {
+    if (instance_info.@"struct".field_types.len == 0 or instance_info.@"struct".field_types[0] != Instance.Parent) {
         @compileError("the first field of the instance struct must have type " ++ @typeName(Instance.Parent));
     }
 
@@ -198,7 +198,7 @@ pub fn defineClass(
     if (!@hasDecl(Instance.Class, "Instance") or Instance.Class.Instance != Instance) {
         @compileError("a class type must have a declaration named Instance pointing to the instance type");
     }
-    if (class_info.@"struct".fields.len == 0 or class_info.@"struct".fields[0].type != Instance.Parent.Class) {
+    if (class_info.@"struct".field_types.len == 0 or class_info.@"struct".field_types[0] != Instance.Parent.Class) {
         @compileError("the first field of the class struct must have type " ++ @typeName(Instance.Parent.Class));
     }
 
@@ -247,7 +247,7 @@ pub fn defineClass(
 
                 {
                     const Implements = if (@hasDecl(Instance, "Implements")) Instance.Implements else [_]type{};
-                    comptime var found = [_]bool{false} ** Implements.len;
+                    comptime var found: [Implements.len]bool = @splat(false);
                     inline for (options.implements) |implementation| {
                         inline for (Implements, &found) |Iface, *found_match| {
                             if (implementation.Iface == Iface) {
@@ -420,17 +420,17 @@ pub fn defineEnum(
     if (enum_info != .@"enum" or enum_info.@"enum".tag_type != c_int) {
         @compileError("an enum type must have a tag type of c_int");
     }
-    if (!enum_info.@"enum".is_exhaustive) {
+    if (enum_info.@"enum".mode != .exhaustive) {
         @compileError("an enum type must be exhaustive");
     }
 
-    const n_values = enum_info.@"enum".fields.len;
+    const n_values = enum_info.@"enum".field_names.len;
     var enum_values: [n_values + 1]gobject.EnumValue = undefined;
-    for (enum_info.@"enum".fields, enum_values[0..n_values]) |field, *value| {
+    for (enum_info.@"enum".field_names, enum_info.@"enum".field_values, enum_values[0..n_values]) |field_name, field_value, *value| {
         value.* = .{
-            .f_value = field.value,
-            .f_value_name = field.name,
-            .f_value_nick = field.name,
+            .f_value = field_value,
+            .f_value_name = field_name,
+            .f_value_nick = field_name,
         };
     }
     enum_values[n_values] = .{
@@ -493,22 +493,22 @@ pub fn defineFlags(
     }
 
     comptime var n_values = 0;
-    for (flags_info.@"struct".fields) |field| {
-        if (!std.mem.startsWith(u8, field.name, "_")) {
-            if (@bitSizeOf(field.type) != 1) {
-                @compileError("non-padding flags field " ++ field.name ++ " must be 1 bit");
+    for (flags_info.@"struct".field_names, flags_info.@"struct".field_types) |field_name, field_type| {
+        if (!std.mem.startsWith(u8, field_name, "_")) {
+            if (@bitSizeOf(field_type) != 1) {
+                @compileError("non-padding flags field " ++ field_name ++ " must be 1 bit");
             }
             n_values += 1;
         }
     }
     comptime var flags_values: [n_values + 1]gobject.FlagsValue = undefined;
     var current_value = 0;
-    for (flags_info.@"struct".fields) |field| {
-        if (!std.mem.startsWith(u8, field.name, "_")) {
+    for (flags_info.@"struct".field_names) |field_name| {
+        if (!std.mem.startsWith(u8, field_name, "_")) {
             flags_values[current_value] = .{
-                .f_value = 1 << @bitOffsetOf(Flags, field.name),
-                .f_value_name = field.name,
-                .f_value_nick = field.name,
+                .f_value = 1 << @bitOffsetOf(Flags, field_name),
+                .f_value_name = field_name,
+                .f_value_nick = field_name,
             };
             current_value += 1;
         }
@@ -1360,7 +1360,7 @@ pub fn defineProperty(
                         options.nick orelse null,
                         options.blurb orelse null,
                         Data.getGObjectType(),
-                        @intFromEnum(options.default),
+                        @backingInt(options.default),
                         flags,
                     ),
                     .@"struct" => gobject.paramSpecFlags(
@@ -1435,7 +1435,7 @@ pub fn registerProperties(class: anytype, comptime properties: []const type) voi
 
 pub fn SignalHandler(comptime Itype: type, comptime param_types: []const type, comptime DataType: type, comptime ReturnType: type) type {
     var fn_param_types: [param_types.len + 2]type = undefined;
-    var fn_param_attrs: [param_types.len + 2]std.builtin.Type.Fn.Param.Attributes = undefined;
+    var fn_param_attrs: [param_types.len + 2]std.builtin.Type.Fn.ParamAttributes = undefined;
     fn_param_types[0] = *Itype;
     fn_param_attrs[0] = .{};
     for (param_types, 0..) |ParamType, i| {
@@ -1641,12 +1641,12 @@ pub fn isA(self: anytype, comptime T: type) bool {
 /// Creates a new instance of an object type with the given properties.
 pub fn newInstance(comptime T: type, properties: anytype) *T {
     const typeInfo = @typeInfo(@TypeOf(properties)).@"struct";
-    const n_props = typeInfo.fields.len;
+    const n_props = typeInfo.field_names.len;
     var names: [n_props][*:0]const u8 = undefined;
     var values: [n_props]gobject.Value = undefined;
-    inline for (typeInfo.fields, 0..) |field, i| {
-        names[i] = field.name ++ "\x00";
-        values[i] = gobject.ext.Value.newFrom(@field(properties, field.name));
+    inline for (typeInfo.field_names, 0..) |field_name, i| {
+        names[i] = field_name ++ "\x00";
+        values[i] = gobject.ext.Value.newFrom(@field(properties, field_name));
     }
     defer for (&values) |*value| value.unset();
     const instance = gobject.Object.newWithProperties(T.getGObjectType(), n_props, &names, &values);
@@ -1751,7 +1751,7 @@ pub const Value = struct {
                 @compileError("cannot guarantee value is non-null");
             }
             const Pointer = @typeInfo(@typeInfo(T).optional.child).pointer;
-            if (!Pointer.is_const) {
+            if (!Pointer.attrs.@"const") {
                 @compileError("get does not take ownership; can only return const strings");
             }
             return switch (Pointer.size) {
@@ -1761,7 +1761,7 @@ pub const Value = struct {
             };
         } else if (std.meta.hasFn(T, "getGObjectType")) {
             return switch (@typeInfo(T)) {
-                .@"enum" => @enumFromInt(value.getEnum()),
+                .@"enum" => @fromBackingInt(@intCast(value.getEnum())),
                 .@"struct" => @bitCast(value.getFlags()),
                 else => @compileError("cannot extract " ++ @typeName(T) ++ " from Value"),
             };
@@ -1824,7 +1824,7 @@ pub const Value = struct {
             };
         } else if (std.meta.hasFn(T, "getGObjectType")) {
             return switch (@typeInfo(T)) {
-                .@"enum" => @enumFromInt(value.getEnum()),
+                .@"enum" => @fromBackingInt(@intCast(value.getEnum())),
                 .@"struct" => @bitCast(value.getFlags()),
                 else => @compileError("cannot extract " ++ @typeName(T) ++ " from Value"),
             };
@@ -1887,7 +1887,7 @@ pub const Value = struct {
             }
         } else if (std.meta.hasFn(T, "getGObjectType")) {
             switch (@typeInfo(T)) {
-                .@"enum" => value.setEnum(@intFromEnum(contents)),
+                .@"enum" => value.setEnum(@backingInt(contents)),
                 .@"struct" => value.setFlags(@bitCast(contents)),
                 else => @compileError("cannot construct Value from " ++ @typeName(T)),
             }
@@ -1939,8 +1939,8 @@ pub const Value = struct {
             value.setDouble(contents);
         } else if (isCString(T)) {
             const is_const = switch (@typeInfo(T)) {
-                .pointer => |pointer| pointer.is_const,
-                .optional => |optional| @typeInfo(optional.child).pointer.is_const,
+                .pointer => |pointer| pointer.attrs.@"const",
+                .optional => |optional| @typeInfo(optional.child).pointer.attrs.@"const",
                 else => comptime unreachable,
             };
             if (is_const) {
@@ -1954,7 +1954,7 @@ pub const Value = struct {
             }
         } else if (std.meta.hasFn(T, "getGObjectType")) {
             switch (@typeInfo(T)) {
-                .@"enum" => value.setEnum(@intFromEnum(contents)),
+                .@"enum" => value.setEnum(@backingInt(contents)),
                 .@"struct" => value.setFlags(@bitCast(contents)),
                 else => @compileError("cannot construct Value from " ++ @typeName(T)),
             }

@@ -24,7 +24,7 @@ jobs:
       - name: Set up Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0-dev.2384+ac77c23af
       - name: Fix working directory permissions
         run: |
           # The container runs as root, but the working directory is created with UID/GID 1001.
